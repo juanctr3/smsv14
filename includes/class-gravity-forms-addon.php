@@ -14,6 +14,7 @@ class Gravity_Forms_Addon extends \GFAddOn {
     protected $_title = 'Notificaciones WhatsApp por SMSenlinea';
     protected $_short_title = 'Notificaciones WhatsApp';
     private static $_instance = null;
+    private $api_handler;
 
     public static function get_instance() {
         if ( self::$_instance == null ) {
@@ -21,11 +22,15 @@ class Gravity_Forms_Addon extends \GFAddOn {
         }
         return self::$_instance;
     }
-
+    
     public function pre_init() {
         parent::pre_init();
+        $this->api_handler = new API_Handler();
         // El hook de envío se registra aquí para asegurar que siempre funcione
         add_action( 'gform_after_submission', [ $this, 'process_submission' ], 10, 2 );
+        // Hooks para encolar scripts y estilos
+        add_action( 'gform_enqueue_scripts', [ $this, 'enqueue_form_scripts' ] );
+        add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_scripts' ] );
     }
 
     public function form_settings_fields( $form ) {
@@ -101,20 +106,57 @@ class Gravity_Forms_Addon extends \GFAddOn {
         }
         return $fields;
     }
+    
+    public function enqueue_form_scripts( $form, $is_ajax ) {
+        // Solo encolar en las páginas de configuración del formulario
+        if ( ! $this->is_form_settings_page() ) {
+            return;
+        }
+        wp_enqueue_script( 
+            'smsenlinea-gf-admin', 
+            SMSENLINEA_WC_PLUGIN_URL . 'assets/js/gravity-forms-admin.js', 
+            [ 'jquery' ], 
+            '1.4.0', 
+            true 
+        );
+        wp_localize_script( 'smsenlinea-gf-admin', 'smsenlinea_gf_ajax', [
+            'ajax_url' => admin_url( 'admin-ajax.php' ),
+            'nonce'    => wp_create_nonce( 'smsenlinea_gf_test_nonce' ),
+            'form_id'  => rgar( $_GET, 'id' ),
+        ] );
+    }
 
+    public function enqueue_admin_scripts( $hook ) {
+        if ( strpos( $hook, 'gf_' ) === false ) {
+            return;
+        }
+        wp_enqueue_style( 
+            'smsenlinea-gf-admin-style', 
+            SMSENLINEA_WC_PLUGIN_URL . 'assets/css/gravity-forms-admin.css', 
+            [], 
+            '1.4.0' 
+        );
+    }
+
+    private function is_form_settings_page() {
+        return rgar( $_GET, 'page' ) === 'gf_edit_forms' && 
+               rgar( $_GET, 'view' ) === 'settings' && 
+               rgar( $_GET, 'subview' ) === $this->_slug;
+    }
+    
     public function process_submission( $entry, $form ) {
         $settings = $this->get_form_settings($form);
         $global_settings = get_option('wc_smsenlinea_settings', []);
-        $api_handler = new API_Handler();
+        $this->api_handler = new API_Handler();
         
         if ( !empty($settings['enable_customer']) && !empty($settings['customer_phone_field']) && !empty($settings['customer_message']) ) {
             $customer_phone = rgar( $entry, $settings['customer_phone_field'] );
             $message = \GFCommon::replace_variables($settings['customer_message'], $form, $entry, false, true, false, 'text');
             $channel = $settings['customer_channel'] ?? 'whatsapp';
             $default_dial_code = $global_settings['default_country_code'] ?? '';
-            $formatted_phone = $api_handler->format_phone_number($customer_phone, '', $default_dial_code);
+            $formatted_phone = $this->api_handler->format_phone_number($customer_phone, '', $default_dial_code);
             if ($formatted_phone) {
-                $api_handler->send_direct_message($formatted_phone, $message, $channel);
+                $this->api_handler->send_direct_message($formatted_phone, $message, $channel);
             }
         }
         
@@ -126,7 +168,7 @@ class Gravity_Forms_Addon extends \GFAddOn {
                 $channel = $settings['admin_channel'] ?? 'whatsapp';
                 foreach ($admin_phones as $phone) {
                     if (!empty($phone)) {
-                        $api_handler->send_direct_message($phone, $message, $channel);
+                        $this->api_handler->send_direct_message($phone, $message, $channel);
                     }
                 }
             }
