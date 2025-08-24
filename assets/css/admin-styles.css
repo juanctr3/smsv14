@@ -1,1 +1,147 @@
+/* --- Estilos Generales para la Página de Ajustes --- */
+.wc-smsenlinea-wrap .notification-block {
+    border: 1px solid #ccd0d4;
+    padding: 15px 20px;
+    margin-top: 20px;
+    background-color: #fff;
+    border-radius: 4px;
+}
 
+.wc-smsenlinea-wrap .notification-block.indented {
+    margin-left: 30px;
+    border-style: solid;
+    border-color: #e6e6e6;
+}
+
+.wc-smsenlinea-wrap h4 {
+    margin-top: 25px;
+    font-size: 1.2em;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.wc-smsenlinea-wrap h5 {
+    margin-top: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.channel-selector {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    padding: 5px;
+    background-color: #f9f9f9;
+    border-radius: 3px;
+}
+
+.channel-selector label {
+    margin-right: 15px;
+}
+
+
+/* --- Estilos para la Sección de Prueba de Envío --- */
+.wc-smsenlinea-wrap .test-section {
+    background-color: #f5f5f5;
+    border: 1px solid #ccd0d4;
+    padding: 1px 20px 20px;
+    margin: 20px 0;
+}
+#smsenlinea-test-response .notice {
+    margin: 15px 0 0;
+}
+.spinner {
+    float: none;
+    vertical-align: middle;
+    margin-left: 10px;
+}
+
+
+/* --- Estilos para los Botones de Variables Interactivas --- */
+.variables-container {
+    margin-top: 8px;
+}
+.toggle-variables-link {
+    font-size: 12px;
+    text-decoration: none;
+    background: #f0f0f1;
+    color: #0c4a6e;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid #c8c8c8;
+    vertical-align: middle;
+}
+.toggle-variables-link:hover {
+    border-color: #949494;
+    color: #1e8cbe;
+}
+.variable-buttons-wrapper {
+    display: none; /* Oculto por defecto */
+    margin-top: 10px;
+    padding: 8px;
+    background-color: #f9f9f9;
+    border: 1px solid #eee;
+    border-radius: 3px;
+}
+.variable-group {
+    margin-bottom: 5px;
+    line-height: 2.2;
+}
+.variable-group:last-child {
+    margin-bottom: 0;
+}
+.insert-variable-btn {
+    margin-right: 5px;
+    margin-bottom: 5px;
+}
+
+
+/* --- NUEVOS ESTILOS PARA EL SELECTOR DE EMOJIS --- */
+.variables-container .smsenlinea-emoji-picker-btn {
+    margin-left: 10px;
+    vertical-align: middle;
+    padding: 0 5px !important;
+    height: 24px !important;
+    line-height: 22px !important;
+    font-size: 14px !important;
+}
+
+#smsenlinea-emoji-panel {
+    position: absolute;
+    z-index: 1000;
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 5px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+    padding: 10px;
+    width: 240px;
+}
+
+#smsenlinea-emoji-panel .emoji-category h4 {
+    margin: 0 0 5px 0;
+    padding: 0 0 5px 0;
+    font-size: 12px;
+    border-bottom: 1px solid #eee;
+    color: #555;
+}
+
+#smsenlinea-emoji-panel .emoji-category {
+    margin-bottom: 10px;
+}
+#smsenlinea-emoji-panel .emoji-category:last-child {
+    margin-bottom: 0;
+}
+
+.smsenlinea-emoji {
+    display: inline-block;
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    width: 32px;
+    text-align: center;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.smsenlinea-emoji:hover {
+    background-color: #f0f0f1;
+}
