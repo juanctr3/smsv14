@@ -26,9 +26,7 @@ class Gravity_Forms_Addon extends \GFAddOn {
     public function pre_init() {
         parent::pre_init();
         $this->api_handler = new API_Handler();
-        // El hook de envío se registra aquí para asegurar que siempre funcione
         add_action( 'gform_after_submission', [ $this, 'process_submission' ], 10, 2 );
-        // Hooks para encolar scripts y estilos
         add_action( 'gform_enqueue_scripts', [ $this, 'enqueue_form_scripts' ] );
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_scripts' ] );
         add_action( 'wp_ajax_smsenlinea_gf_test', [ $this, 'handle_test_message' ] );
