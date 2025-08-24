@@ -3,443 +3,477 @@ namespace SMSenlinea_WhatsApp;
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-final class Main {
-    private static $_instance = null;
+/**
+ * Optimized Gravity Forms Integration for SMSenlinea WhatsApp Plugin
+ * 
+ * This class provides enhanced integration with Gravity Forms including:
+ * - Better field detection (phone, text, email)
+ * - Conditional logic support
+ * - Multiple message templates
+ * - Enhanced error handling
+ * - Logging capabilities
+ * - Merge tags support
+ */
+class Optimized_Gravity_Forms_Integration {
     
-    public static function instance() {
-        if ( is_null( self::$_instance ) ) {
+    private static $_instance = null;
+    private $api_handler;
+    private $settings;
+    
+    public static function get_instance() {
+        if ( self::$_instance == null ) {
             self::$_instance = new self();
         }
         return self::$_instance;
     }
     
     private function __construct() {
-        $this->define_constants();
-        $this->load_dependencies();
-        $this->init_classes();
-        $this->setup_hooks();
-    }
-    
-    /**
-     * Define plugin constants
-     */
-    private function define_constants() {
-        if ( ! defined( 'SMSENLINEA_WC_VERSION' ) ) {
-            define( 'SMSENLINEA_WC_VERSION', '1.4.0' );
+        // Only initialize if Gravity Forms is active
+        if ( ! class_exists( 'GFCommon' ) ) {
+            return;
         }
         
-        if ( ! defined( 'SMSENLINEA_WC_PLUGIN_BASENAME' ) ) {
-            define( 'SMSENLINEA_WC_PLUGIN_BASENAME', plugin_basename( SMSENLINEA_WC_PLUGIN_PATH . 'smsenlinea-whatsapp-woocommerce.php' ) );
-        }
-    }
-    
-    /**
-     * Load required dependencies
-     */
-    private function load_dependencies() {
-        // Core classes
-        require_once SMSENLINEA_WC_PLUGIN_PATH . 'includes/class-api-handler.php';
-        require_once SMSENLINEA_WC_PLUGIN_PATH . 'includes/class-admin-settings.php';
-        require_once SMSENLINEA_WC_PLUGIN_PATH . 'includes/class-log-list-table.php';
-        
-        // WooCommerce integration
-        if ( $this->is_woocommerce_active() ) {
-            require_once SMSENLINEA_WC_PLUGIN_PATH . 'includes/class-woocommerce-hooks.php';
-        }
-        
-        // Gravity Forms integration (optimized version)
-        if ( $this->is_gravity_forms_active() ) {
-            require_once SMSENLINEA_WC_PLUGIN_PATH . 'includes/class-optimized-gravity-forms-integration.php';
-            require_once SMSENLINEA_WC_PLUGIN_PATH . 'includes/class-gravity-forms-admin-addon.php';
-        }
-    }
-    
-    /**
-     * Initialize plugin classes
-     */
-    private function init_classes() {
-        // Always initialize core classes
         $this->api_handler = new API_Handler();
-        new Admin_Settings();
+        $this->settings = get_option( 'wc_smsenlinea_settings', [] );
         
-        // Initialize WooCommerce hooks if WooCommerce is active
-        if ( $this->is_woocommerce_active() ) {
-            new WooCommerce_Hooks( $this->api_handler );
-        }
+        // Initialize hooks
+        $this->init_hooks();
         
-        // Initialize Gravity Forms integration if Gravity Forms is active
-        if ( $this->is_gravity_forms_active() ) {
-            $this->init_gravity_forms_integration();
-        }
+        // Add admin hooks for form settings
+        add_action( 'gform_form_settings', [ $this, 'add_form_settings' ], 10, 2 );
+        add_filter( 'gform_form_settings_fields', [ $this, 'add_form_settings_fields' ], 10, 2 );
+        add_action( 'gform_pre_form_settings_save', [ $this, 'save_form_settings' ] );
     }
     
     /**
-     * Setup plugin hooks
+     * Initialize main hooks
      */
-    private function setup_hooks() {
-        // Plugin lifecycle hooks
-        register_activation_hook( SMSENLINEA_WC_PLUGIN_PATH . 'smsenlinea-whatsapp-woocommerce.php', [ $this, 'on_activation' ] );
-        register_deactivation_hook( SMSENLINEA_WC_PLUGIN_PATH . 'smsenlinea-whatsapp-woocommerce.php', [ $this, 'on_deactivation' ] );
+    private function init_hooks() {
+        // Main submission hook with priority to ensure it runs after other processes
+        add_action( 'gform_after_submission', [ $this, 'process_form_submission' ], 15, 2 );
         
-        // Admin notices
-        add_action( 'admin_notices', [ $this, 'display_admin_notices' ] );
-        
-        // Plugin links
-        add_filter( 'plugin_action_links_' . SMSENLINEA_WC_PLUGIN_BASENAME, [ $this, 'plugin_action_links' ] );
-        add_filter( 'plugin_row_meta', [ $this, 'plugin_row_meta' ], 10, 2 );
-        
-        // Scheduled events for delayed notifications
-        add_action( 'smsenlinea_delayed_notification', [ $this, 'handle_delayed_notification' ], 10, 2 );
-        
-        // AJAX hooks for testing
-        add_action( 'wp_ajax_smsenlinea_test_api_connection', [ $this, 'test_api_connection' ] );
-        
-        // Internationalization
-        add_action( 'init', [ $this, 'load_textdomain' ] );
+        // Optional: Hook for partial submissions (multi-page forms)
+        add_action( 'gform_partial_entry_created', [ $this, 'handle_partial_submission' ], 10, 2 );
     }
     
     /**
-     * Initialize Gravity Forms integration
+     * Process form submission and send notifications
      */
-    private function init_gravity_forms_integration() {
-        // Initialize the optimized integration
-        add_action( 'init', function() {
-            Optimized_Gravity_Forms_Integration::get_instance();
-        }, 15 );
-        
-        // Initialize the admin addon
-        add_action( 'gform_loaded', function() {
-            if ( ! method_exists( 'GFForms', 'include_addon_framework' ) ) {
+    public function process_form_submission( $entry, $form ) {
+        try {
+            $form_settings = $this->get_form_notification_settings( $form['id'] );
+            
+            if ( empty( $form_settings ) || ! $this->should_process_form( $form, $entry, $form_settings ) ) {
                 return;
             }
             
-            \GFForms::include_addon_framework();
-            Gravity_Forms_Admin_Addon::get_instance();
-        }, 5 );
+            // Process customer notification
+            if ( $this->is_customer_notification_enabled( $form_settings ) ) {
+                $this->send_customer_notification( $entry, $form, $form_settings );
+            }
+            
+            // Process admin notification
+            if ( $this->is_admin_notification_enabled( $form_settings ) ) {
+                $this->send_admin_notification( $entry, $form, $form_settings );
+            }
+            
+            // Log successful processing
+            $this->log_form_processing( $form['id'], $entry['id'], 'success', 'Form processed successfully' );
+            
+        } catch ( Exception $e ) {
+            // Log error
+            $this->log_form_processing( $form['id'], $entry['id'], 'error', $e->getMessage() );
+            
+            // Optional: Add entry note for debugging
+            if ( class_exists( 'GFFormsModel' ) ) {
+                \GFFormsModel::add_note( $entry['id'], 0, 'SMSenlinea Error', $e->getMessage() );
+            }
+        }
     }
     
     /**
-     * Check if WooCommerce is active
+     * Handle partial submissions for multi-page forms
      */
-    private function is_woocommerce_active() {
-        return in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', get_option( 'active_plugins', [] ) ) ) ||
-               ( is_multisite() && array_key_exists( 'woocommerce/woocommerce.php', get_site_option( 'active_sitewide_plugins', [] ) ) );
-    }
-    
-    /**
-     * Check if Gravity Forms is active
-     */
-    private function is_gravity_forms_active() {
-        return class_exists( 'GFForms' ) && class_exists( 'GFCommon' );
-    }
-    
-    /**
-     * Plugin activation hook
-     */
-    public function on_activation() {
-        // Create database tables
-        $this->create_database_tables();
+    public function handle_partial_submission( $entry, $form ) {
+        $form_settings = $this->get_form_notification_settings( $form['id'] );
         
-        // Set default options
-        $this->set_default_options();
-        
-        // Schedule cleanup cron
-        if ( ! wp_next_scheduled( 'smsenlinea_cleanup_logs' ) ) {
-            wp_schedule_event( time(), 'weekly', 'smsenlinea_cleanup_logs' );
+        // Only send partial notifications if enabled
+        if ( ! empty( $form_settings['enable_partial_notifications'] ) ) {
+            // Send a "partial submission received" message
+            $this->send_partial_notification( $entry, $form, $form_settings );
+        }
+    }
+    
+    /**
+     * Check if form should be processed
+     */
+    private function should_process_form( $form, $entry, $form_settings ) {
+        // Check if notifications are globally disabled
+        if ( empty( $form_settings['enable_notifications'] ) ) {
+            return false;
         }
         
-        // Flush rewrite rules if needed
-        flush_rewrite_rules();
-    }
-    
-    /**
-     * Plugin deactivation hook
-     */
-    public function on_deactivation() {
-        // Clear scheduled events
-        wp_clear_scheduled_hook( 'smsenlinea_cleanup_logs' );
-        wp_clear_scheduled_hook( 'smsenlinea_delayed_notification' );
-        
-        // Clean up transients
-        $this->cleanup_transients();
-    }
-    
-    /**
-     * Create database tables
-     */
-    private function create_database_tables() {
-        global $wpdb;
-        
-        $table_name = $wpdb->prefix . 'smsenlinea_logs';
-        $charset_collate = $wpdb->get_charset_collate();
-        
-        $sql = "CREATE TABLE $table_name (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            timestamp datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
-            recipient varchar(25) NOT NULL,
-            channel varchar(10) NOT NULL,
-            status varchar(10) NOT NULL,
-            message text NOT NULL,
-            response text NOT NULL,
-            form_id varchar(50) DEFAULT NULL,
-            entry_id varchar(50) DEFAULT NULL,
-            order_id varchar(50) DEFAULT NULL,
-            PRIMARY KEY (id),
-            KEY timestamp (timestamp),
-            KEY status (status),
-            KEY channel (channel)
-        ) $charset_collate;";
-        
-        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-        dbDelta( $sql );
-        
-        // Update version
-        update_option( 'smsenlinea_wc_version', SMSENLINEA_WC_VERSION );
-    }
-    
-    /**
-     * Set default plugin options
-     */
-    private function set_default_options() {
-        $defaults = [
-            'default_country_code' => '57',
-            'sms_mode' => 'devices',
-            'sms_sim_slot' => 1,
-            'enable_new_order' => 0,
-            'channel_new_order' => 'whatsapp',
-            'new_order_msg' => 'Hi {customer_fullname}! Your order #{order_id} has been received. Total: {order_total}. We\'ll notify you when it\'s ready! 🛒✅',
-            'enable_admin_new_order' => 0,
-            'channel_admin_new_order' => 'whatsapp',
-            'admin_new_order_msg' => '🔔 New order #{order_id} from {customer_fullname} - {order_total}',
-        ];
-        
-        $existing_options = get_option( 'wc_smsenlinea_settings', [] );
-        $updated_options = array_merge( $defaults, $existing_options );
-        
-        update_option( 'wc_smsenlinea_settings', $updated_options );
-    }
-    
-    /**
-     * Display admin notices
-     */
-    public function display_admin_notices() {
-        // Check if WooCommerce is missing
-        if ( ! $this->is_woocommerce_active() ) {
-            echo '<div class="notice notice-warning"><p>';
-            echo '<strong>SMSenlinea WhatsApp Notifications:</strong> ';
-            echo __( 'WooCommerce is required for full functionality. Some features may be limited.', 'smsenlinea-whatsapp-woocommerce' );
-            echo '</p></div>';
+        // Check conditional logic if configured
+        if ( ! empty( $form_settings['conditional_logic'] ) ) {
+            return $this->evaluate_conditional_logic( $entry, $form_settings['conditional_logic'] );
         }
         
-        // Check API configuration
-        $settings = get_option( 'wc_smsenlinea_settings', [] );
-        if ( empty( $settings['api_secret'] ) ) {
-            $settings_url = admin_url( 'admin.php?page=wc-smsenlinea-settings&tab=api_testing' );
-            echo '<div class="notice notice-warning"><p>';
-            echo '<strong>SMSenlinea WhatsApp Notifications:</strong> ';
-            echo sprintf( 
-                __( 'Please configure your API credentials in the <a href="%s">plugin settings</a>.', 'smsenlinea-whatsapp-woocommerce' ),
-                $settings_url
+        // Check for spam entries
+        if ( ! empty( $entry['is_spam'] ) || $entry['status'] === 'spam' ) {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Send customer notification
+     */
+    private function send_customer_notification( $entry, $form, $form_settings ) {
+        $phone_number = $this->get_customer_phone( $entry, $form_settings );
+        
+        if ( empty( $phone_number ) ) {
+            throw new Exception( 'Customer phone number not found or empty' );
+        }
+        
+        $message = $this->build_customer_message( $entry, $form, $form_settings );
+        $channel = $form_settings['customer_channel'] ?? 'whatsapp';
+        
+        // Format phone number
+        $formatted_phone = $this->format_phone_number( $phone_number );
+        
+        if ( ! $formatted_phone ) {
+            throw new Exception( 'Invalid phone number format: ' . $phone_number );
+        }
+        
+        // Send message
+        $result = $this->api_handler->send_direct_message( $formatted_phone, $message, $channel );
+        
+        if ( ! $result['success'] ) {
+            throw new Exception( 'Failed to send customer notification: ' . $result['error'] );
+        }
+        
+        // Add success note to entry
+        if ( class_exists( 'GFFormsModel' ) ) {
+            \GFFormsModel::add_note( 
+                $entry['id'], 
+                0, 
+                'SMSenlinea Notification', 
+                sprintf( '%s notification sent to customer (%s)', ucfirst($channel), $formatted_phone )
             );
-            echo '</p></div>';
+        }
+    }
+    
+    /**
+     * Send admin notification
+     */
+    private function send_admin_notification( $entry, $form, $form_settings ) {
+        $admin_phones = $this->get_admin_phones( $form_settings );
+        
+        if ( empty( $admin_phones ) ) {
+            throw new Exception( 'Admin phone numbers not configured' );
         }
         
-        // Show Gravity Forms integration notice if available
-        if ( $this->is_gravity_forms_active() ) {
-            $dismissed = get_option( 'smsenlinea_gf_notice_dismissed', false );
-            if ( ! $dismissed && ! isset( $_GET['smsenlinea_dismiss_gf_notice'] ) ) {
-                echo '<div class="notice notice-info is-dismissible"><p>';
-                echo '<strong>SMSenlinea:</strong> ';
-                echo __( 'Gravity Forms integration is now available! You can configure SMS/WhatsApp notifications for your forms in each form\'s settings.', 'smsenlinea-whatsapp-woocommerce' );
-                echo ' <a href="' . add_query_arg( 'smsenlinea_dismiss_gf_notice', '1' ) . '">' . __( 'Dismiss', 'smsenlinea-whatsapp-woocommerce' ) . '</a>';
-                echo '</p></div>';
+        $message = $this->build_admin_message( $entry, $form, $form_settings );
+        $channel = $form_settings['admin_channel'] ?? 'whatsapp';
+        
+        $success_count = 0;
+        $errors = [];
+        
+        foreach ( $admin_phones as $phone ) {
+            $formatted_phone = $this->format_phone_number( $phone );
+            
+            if ( ! $formatted_phone ) {
+                $errors[] = "Invalid admin phone: $phone";
+                continue;
+            }
+            
+            $result = $this->api_handler->send_direct_message( $formatted_phone, $message, $channel );
+            
+            if ( $result['success'] ) {
+                $success_count++;
+            } else {
+                $errors[] = "Failed to notify admin $formatted_phone: " . $result['error'];
             }
         }
         
-        // Handle notice dismissal
-        if ( isset( $_GET['smsenlinea_dismiss_gf_notice'] ) ) {
-            update_option( 'smsenlinea_gf_notice_dismissed', true );
-            wp_safe_redirect( remove_query_arg( 'smsenlinea_dismiss_gf_notice' ) );
-            exit;
-        }
-    }
-    
-    /**
-     * Add plugin action links
-     */
-    public function plugin_action_links( $links ) {
-        $settings_link = '<a href="' . admin_url( 'admin.php?page=wc-smsenlinea-settings' ) . '">' . __( 'Settings', 'smsenlinea-whatsapp-woocommerce' ) . '</a>';
-        array_unshift( $links, $settings_link );
-        
-        return $links;
-    }
-    
-    /**
-     * Add plugin row meta
-     */
-    public function plugin_row_meta( $meta, $file ) {
-        if ( SMSENLINEA_WC_PLUGIN_BASENAME === $file ) {
-            $meta[] = '<a href="https://www.smsenlinea.com/" target="_blank">' . __( 'Visit SMSenlinea.com', 'smsenlinea-whatsapp-woocommerce' ) . '</a>';
-            $meta[] = '<a href="https://www.smsenlinea.com/support" target="_blank">' . __( 'Support', 'smsenlinea-whatsapp-woocommerce' ) . '</a>';
-            $meta[] = '<a href="https://www.smsenlinea.com/docs" target="_blank">' . __( 'Documentation', 'smsenlinea-whatsapp-woocommerce' ) . '</a>';
-        }
-        
-        return $meta;
-    }
-    
-    /**
-     * Handle delayed notifications
-     */
-    public function handle_delayed_notification( $entry_id, $form_id ) {
-        if ( ! $this->is_gravity_forms_active() ) {
-            return;
-        }
-        
-        $entry = \GFAPI::get_entry( $entry_id );
-        $form = \GFAPI::get_form( $form_id );
-        
-        if ( is_wp_error( $entry ) || is_wp_error( $form ) ) {
-            return;
-        }
-        
-        $integration = Optimized_Gravity_Forms_Integration::get_instance();
-        if ( $integration ) {
-            $integration->process_form_submission( $entry, $form );
-        }
-    }
-    
-    /**
-     * Test API connection via AJAX
-     */
-    public function test_api_connection() {
-        check_ajax_referer( 'smsenlinea_test_api', 'nonce' );
-        
-        if ( ! current_user_can( 'manage_woocommerce' ) ) {
-            wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
-        }
-        
-        $settings = get_option( 'wc_smsenlinea_settings', [] );
-        
-        if ( empty( $settings['api_secret'] ) ) {
-            wp_send_json_error( [ 'message' => 'API Secret not configured' ] );
-        }
-        
-        // Test with a simple API call (you can customize this based on SMSenlinea's API)
-        $response = wp_remote_post( 'https://whatsapp.smsenlinea.com/api/test', [
-            'body' => [ 'secret' => $settings['api_secret'] ],
-            'timeout' => 15
-        ] );
-        
-        if ( is_wp_error( $response ) ) {
-            wp_send_json_error( [ 'message' => 'Connection failed: ' . $response->get_error_message() ] );
-        }
-        
-        $http_code = wp_remote_retrieve_response_code( $response );
-        
-        if ( $http_code === 200 ) {
-            wp_send_json_success( [ 'message' => 'API connection successful!' ] );
-        } else {
-            wp_send_json_error( [ 'message' => 'API connection failed. HTTP Code: ' . $http_code ] );
-        }
-    }
-    
-    /**
-     * Load plugin textdomain
-     */
-    public function load_textdomain() {
-        load_plugin_textdomain( 
-            'smsenlinea-whatsapp-woocommerce', 
-            false, 
-            dirname( SMSENLINEA_WC_PLUGIN_BASENAME ) . '/languages/' 
-        );
-    }
-    
-    /**
-     * Cleanup old transients
-     */
-    private function cleanup_transients() {
-        global $wpdb;
-        
-        // Clean up plugin-specific transients
-        $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_smsenlinea_%'" );
-        $wpdb->query( "DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_smsenlinea_%'" );
-    }
-    
-    /**
-     * Get plugin version
-     */
-    public function get_version() {
-        return SMSENLINEA_WC_VERSION;
-    }
-    
-    /**
-     * Get API handler instance
-     */
-    public function get_api_handler() {
-        return $this->api_handler;
-    }
-    
-    /**
-     * Check if plugin is properly configured
-     */
-    public function is_configured() {
-        $settings = get_option( 'wc_smsenlinea_settings', [] );
-        return ! empty( $settings['api_secret'] );
-    }
-    
-    /**
-     * Get plugin settings
-     */
-    public function get_settings() {
-        return get_option( 'wc_smsenlinea_settings', [] );
-    }
-    
-    /**
-     * Update plugin settings
-     */
-    public function update_settings( $new_settings ) {
-        $current_settings = $this->get_settings();
-        $updated_settings = array_merge( $current_settings, $new_settings );
-        return update_option( 'wc_smsenlinea_settings', $updated_settings );
-    }
-    
-    /**
-     * Log plugin activity
-     */
-    public function log( $message, $level = 'info' ) {
-        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-            $formatted_message = sprintf( 
-                '[SMSenlinea %s] %s: %s', 
-                SMSENLINEA_WC_VERSION,
-                strtoupper( $level ), 
-                $message 
+        // Add note to entry
+        if ( class_exists( 'GFFormsModel' ) ) {
+            $note_message = sprintf( 
+                '%s admin notifications sent successfully: %d/%d', 
+                ucfirst($channel),
+                $success_count, 
+                count($admin_phones) 
             );
-            error_log( $formatted_message );
+            
+            if ( ! empty( $errors ) ) {
+                $note_message .= "\nErrors: " . implode( ', ', $errors );
+            }
+            
+            \GFFormsModel::add_note( $entry['id'], 0, 'SMSenlinea Admin Notification', $note_message );
+        }
+        
+        if ( $success_count === 0 ) {
+            throw new Exception( 'All admin notifications failed: ' . implode( ', ', $errors ) );
         }
     }
     
     /**
-     * Get integration status
+     * Get customer phone number from entry
      */
-    public function get_integration_status() {
-        return [
-            'woocommerce' => $this->is_woocommerce_active(),
-            'gravity_forms' => $this->is_gravity_forms_active(),
-            'configured' => $this->is_configured(),
-            'version' => $this->get_version(),
+    private function get_customer_phone( $entry, $form_settings ) {
+        $phone_field_id = $form_settings['customer_phone_field'] ?? '';
+        
+        if ( empty( $phone_field_id ) ) {
+            return false;
+        }
+        
+        return rgar( $entry, $phone_field_id );
+    }
+    
+    /**
+     * Get admin phone numbers
+     */
+    private function get_admin_phones( $form_settings ) {
+        // Try form-specific admin phones first
+        $admin_phones_str = $form_settings['admin_phones'] ?? '';
+        
+        // Fall back to global settings
+        if ( empty( $admin_phones_str ) ) {
+            $admin_phones_str = $this->settings['admin_phones'] ?? '';
+        }
+        
+        if ( empty( $admin_phones_str ) ) {
+            return [];
+        }
+        
+        return array_filter( array_map( 'trim', explode( ',', $admin_phones_str ) ) );
+    }
+    
+    /**
+     * Build customer message with merge tags
+     */
+    private function build_customer_message( $entry, $form, $form_settings ) {
+        $template = $form_settings['customer_message'] ?? '';
+        
+        if ( empty( $template ) ) {
+            $template = 'Thank you for your submission!';
+        }
+        
+        // Process Gravity Forms merge tags
+        $message = \GFCommon::replace_variables( $template, $form, $entry, false, true, false, 'text' );
+        
+        // Process custom shortcodes if any
+        $message = do_shortcode( $message );
+        
+        return $message;
+    }
+    
+    /**
+     * Build admin message with merge tags
+     */
+    private function build_admin_message( $entry, $form, $form_settings ) {
+        $template = $form_settings['admin_message'] ?? '';
+        
+        if ( empty( $template ) ) {
+            $template = 'New submission received for form "' . $form['title'] . '": {all_fields}';
+        }
+        
+        // Process Gravity Forms merge tags
+        $message = \GFCommon::replace_variables( $template, $form, $entry, false, true, false, 'text' );
+        
+        // Add form context information
+        $message .= "\n\nForm: " . $form['title'];
+        $message .= "\nSubmission ID: " . $entry['id'];
+        $message .= "\nDate: " . $entry['date_created'];
+        
+        // Process custom shortcodes if any
+        $message = do_shortcode( $message );
+        
+        return $message;
+    }
+    
+    /**
+     * Format phone number using the API handler
+     */
+    private function format_phone_number( $phone ) {
+        $default_country_code = $this->settings['default_country_code'] ?? '57';
+        return $this->api_handler->format_phone_number( $phone, '', $default_country_code );
+    }
+    
+    /**
+     * Check if customer notification is enabled
+     */
+    private function is_customer_notification_enabled( $form_settings ) {
+        return ! empty( $form_settings['enable_customer'] ) && 
+               ! empty( $form_settings['customer_phone_field'] ) && 
+               ! empty( $form_settings['customer_message'] );
+    }
+    
+    /**
+     * Check if admin notification is enabled
+     */
+    private function is_admin_notification_enabled( $form_settings ) {
+        return ! empty( $form_settings['enable_admin'] ) && 
+               ! empty( $form_settings['admin_message'] );
+    }
+    
+    /**
+     * Get form notification settings
+     */
+    private function get_form_notification_settings( $form_id ) {
+        return get_option( "gf_smsenlinea_form_{$form_id}_settings", [] );
+    }
+    
+    /**
+     * Evaluate conditional logic
+     */
+    private function evaluate_conditional_logic( $entry, $conditional_logic ) {
+        // This is a simplified version - you can expand this based on your needs
+        if ( empty( $conditional_logic['field_id'] ) || empty( $conditional_logic['operator'] ) ) {
+            return true;
+        }
+        
+        $field_value = rgar( $entry, $conditional_logic['field_id'] );
+        $compare_value = $conditional_logic['value'] ?? '';
+        $operator = $conditional_logic['operator'];
+        
+        switch ( $operator ) {
+            case 'is':
+                return $field_value === $compare_value;
+            case 'isnot':
+                return $field_value !== $compare_value;
+            case 'contains':
+                return strpos( $field_value, $compare_value ) !== false;
+            case 'not_contains':
+                return strpos( $field_value, $compare_value ) === false;
+            case 'greater_than':
+                return floatval( $field_value ) > floatval( $compare_value );
+            case 'less_than':
+                return floatval( $field_value ) < floatval( $compare_value );
+            default:
+                return true;
+        }
+    }
+    
+    /**
+     * Send partial notification for multi-page forms
+     */
+    private function send_partial_notification( $entry, $form, $form_settings ) {
+        if ( empty( $form_settings['partial_message'] ) ) {
+            return;
+        }
+        
+        $phone_number = $this->get_customer_phone( $entry, $form_settings );
+        
+        if ( empty( $phone_number ) ) {
+            return;
+        }
+        
+        $message = \GFCommon::replace_variables( 
+            $form_settings['partial_message'], 
+            $form, 
+            $entry, 
+            false, 
+            true, 
+            false, 
+            'text' 
+        );
+        
+        $formatted_phone = $this->format_phone_number( $phone_number );
+        $channel = $form_settings['customer_channel'] ?? 'whatsapp';
+        
+        if ( $formatted_phone ) {
+            $this->api_handler->send_direct_message( $formatted_phone, $message, $channel );
+        }
+    }
+    
+    /**
+     * Log form processing
+     */
+    private function log_form_processing( $form_id, $entry_id, $status, $message ) {
+        if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+            error_log( sprintf( 
+                'SMSenlinea GF Integration - Form: %d, Entry: %d, Status: %s, Message: %s', 
+                $form_id, 
+                $entry_id, 
+                $status, 
+                $message 
+            ) );
+        }
+    }
+    
+    /**
+     * Add form settings section to Gravity Forms
+     */
+    public function add_form_settings( $form ) {
+        // This method would be used to add settings UI to individual forms
+        // Implementation depends on GF version and requirements
+    }
+    
+    /**
+     * Add form settings fields
+     */
+    public function add_form_settings_fields( $fields, $form ) {
+        // Add custom fields to form settings
+        // Implementation would go here
+        return $fields;
+    }
+    
+    /**
+     * Save form settings
+     */
+    public function save_form_settings( $form ) {
+        // Save custom form settings
+        // Implementation would go here
+    }
+    
+    /**
+     * Get available phone fields from form
+     */
+    public function get_phone_fields( $form ) {
+        $fields = [
+            [
+                'label' => esc_html__( '-- Select Field --', 'smsenlinea-whatsapp-woocommerce' ),
+                'value' => ''
+            ]
         ];
+        
+        foreach ( $form['fields'] as $field ) {
+            // Include phone fields and text fields that might contain phone numbers
+            if ( in_array( $field->get_input_type(), [ 'phone', 'text', 'number' ] ) ) {
+                $fields[] = [
+                    'label' => esc_html( $field->label . ' (' . $field->get_input_type() . ')' ),
+                    'value' => $field->id
+                ];
+            }
+        }
+        
+        return $fields;
+    }
+    
+    /**
+     * Get available text fields for conditional logic
+     */
+    public function get_text_fields( $form ) {
+        $fields = [];
+        
+        foreach ( $form['fields'] as $field ) {
+            if ( in_array( $field->get_input_type(), [ 'text', 'textarea', 'select', 'radio', 'checkbox' ] ) ) {
+                $fields[] = [
+                    'label' => esc_html( $field->label ),
+                    'value' => $field->id
+                ];
+            }
+        }
+        
+        return $fields;
     }
 }
 
-// Scheduled cleanup for old logs
-add_action( 'smsenlinea_cleanup_logs', function() {
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'smsenlinea_logs';
-    
-    // Keep logs for 90 days
-    $cutoff_date = date( 'Y-m-d H:i:s', strtotime( '-90 days' ) );
-    $wpdb->query( $wpdb->prepare( 
-        "DELETE FROM $table_name WHERE timestamp < %s", 
-        $cutoff_date 
-    ) );
-} );
+// Initialize the optimized integration
+if ( class_exists( 'GFCommon' ) ) {
+    add_action( 'init', function() {
+        \SMSenlinea_WhatsApp\Optimized_Gravity_Forms_Integration::get_instance();
+    }, 15 );
+}
