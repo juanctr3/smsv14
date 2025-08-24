@@ -5,31 +5,26 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 /**
  * Main Plugin Class
- * 
- * Handles the initialization and loading of all plugin components
- * 
- * @since 1.0.0
+ * * Handles the initialization and loading of all plugin components
+ * * @since 1.0.0
  */
 final class Main {
     
     /**
      * Plugin instance
-     * 
-     * @var Main
+     * * @var Main
      */
     private static $_instance = null;
     
     /**
      * API Handler instance
-     * 
-     * @var API_Handler
+     * * @var API_Handler
      */
     private $api_handler;
     
     /**
      * Get plugin instance
-     * 
-     * @return Main
+     * * @return Main
      */
     public static function instance() {
         if ( is_null( self::$_instance ) ) {
@@ -103,9 +98,6 @@ final class Main {
         if ( class_exists( 'GFForms' ) || class_exists( 'GFCommon' ) ) {
             $this->load_gravity_forms_integration();
         }
-        
-        // Add more integrations here as needed
-        // Example: Contact Form 7, WPForms, etc.
     }
     
     /**
@@ -208,8 +200,7 @@ final class Main {
     
     /**
      * Run database updates based on version
-     * 
-     * @param string $current_version Current installed version
+     * * @param string $current_version Current installed version
      */
     private function run_updates( $current_version ) {
         // Run updates based on version comparisons
@@ -314,8 +305,7 @@ final class Main {
     
     /**
      * Get API handler instance
-     * 
-     * @return API_Handler|null
+     * * @return API_Handler|null
      */
     public function get_api_handler() {
         return $this->api_handler;
@@ -323,8 +313,7 @@ final class Main {
     
     /**
      * Check if WooCommerce is active
-     * 
-     * @return bool
+     * * @return bool
      */
     public static function is_woocommerce_active() {
         return class_exists( 'WooCommerce' );
@@ -332,8 +321,7 @@ final class Main {
     
     /**
      * Check if Gravity Forms is active
-     * 
-     * @return bool
+     * * @return bool
      */
     public static function is_gravity_forms_active() {
         return class_exists( 'GFForms' ) || class_exists( 'GFCommon' );
@@ -341,8 +329,7 @@ final class Main {
     
     /**
      * Log debug information
-     * 
-     * @param string $message
+     * * @param string $message
      * @param string $level
      */
     public static function log( $message, $level = 'info' ) {
