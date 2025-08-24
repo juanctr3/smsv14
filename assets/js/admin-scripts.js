@@ -79,7 +79,7 @@ jQuery(document).ready(function($) {
     $('#smsenlinea-send-test-btn').on('click', function(e) {
         e.preventDefault();
         var button = $(this), spinner = button.siblings('.spinner'), responseDiv = $('#smsenlinea-test-response');
-        var testPhone = $('#test_phone').val(), testMessage = $('#test_message').val();
+        var testPhone = $('#test_phone').val(), testMessage = $('#test_message_area').val();
         var selectedChannel = $('input[name="wc_smsenlinea_settings[test_channel]"]:checked').val();
 
         if (!testPhone || !testMessage) {
