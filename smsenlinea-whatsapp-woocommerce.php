@@ -3,7 +3,7 @@
  * Plugin Name:       Notificaciones WhatsApp y SMS para WooCommerce (SMSenlinea)
  * Plugin URI:        https://www.smsenlinea.com/
  * Description:       Potencia la comunicación con tus clientes enviando notificaciones automáticas por WhatsApp y SMS para cada estado de pedido de WooCommerce. Integrado con la API de SMSenlinea.com.
- * Version:           1.4.0
+ * Version:           1.4.1
  * Author:            SmsEnLinea.com
  * Author URI:        https://www.smsenlinea.com/
  * Requires at least: 5.8
@@ -37,16 +37,16 @@ function smsenlinea_wc_install() {
     dbDelta( $sql );
     
     // Guardar la versión actual para futuras actualizaciones
-    add_option( 'smsenlinea_wc_version', '1.3.0' );
+    add_option( 'smsenlinea_wc_version', '1.4.1' );
 }
 register_activation_hook( __FILE__, 'smsenlinea_wc_install' );
 
 // Rutina de actualización
 function smsenlinea_wc_update_check() {
     $current_version = get_option( 'smsenlinea_wc_version' );
-    if ( version_compare( $current_version, '1.3.0', '<' ) ) {
+    if ( version_compare( $current_version, '1.4.1', '<' ) ) {
         smsenlinea_wc_install();
-        update_option( 'smsenlinea_wc_version', '1.3.0' );
+        update_option( 'smsenlinea_wc_version', '1.4.1' );
     }
 }
 add_action( 'plugins_loaded', 'smsenlinea_wc_update_check', 5 );
@@ -63,7 +63,7 @@ if ( ! in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins',
 // Definir constantes del plugin.
 define( 'SMSENLINEA_WC_PLUGIN_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SMSENLINEA_WC_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'SMSENLINEA_WC_VERSION', '1.3.0' );
+define( 'SMSENLINEA_WC_VERSION', '1.4.1' );
 
 // Incluir el cargador principal del plugin.
 require_once SMSENLINEA_WC_PLUGIN_PATH . 'includes/class-main.php';
