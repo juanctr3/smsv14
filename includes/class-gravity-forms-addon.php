@@ -31,6 +31,7 @@ class Gravity_Forms_Addon extends \GFAddOn {
         // Hooks para encolar scripts y estilos
         add_action( 'gform_enqueue_scripts', [ $this, 'enqueue_form_scripts' ] );
         add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_admin_scripts' ] );
+        add_action( 'wp_ajax_smsenlinea_gf_test', [ $this, 'handle_test_message' ] );
     }
 
     public function form_settings_fields( $form ) {
@@ -39,6 +40,12 @@ class Gravity_Forms_Addon extends \GFAddOn {
             [
                 'title'  => esc_html__( 'Ajustes de Notificaciones WhatsApp', 'smsenlinea-whatsapp-woocommerce' ),
                 'fields' => [
+                    [
+                        'label'   => esc_html__( 'Habilitar Notificaciones', 'smsenlinea-whatsapp-woocommerce' ),
+                        'type'    => 'checkbox',
+                        'name'    => 'enable_notifications',
+                        'choices' => [ [ 'label' => esc_html__( 'Habilitar notificaciones de WhatsApp/SMS para este formulario', 'smsenlinea-whatsapp-woocommerce' ), 'name' => 'enable_notifications' ] ],
+                    ],
                     [
                         'label'   => '<h4>' . esc_html__( 'Notificación al Usuario', 'smsenlinea-whatsapp-woocommerce' ) . '</h4><p class="description">Se envía a la persona que rellena el formulario.</p>',
                         'type'    => 'html',
@@ -108,7 +115,6 @@ class Gravity_Forms_Addon extends \GFAddOn {
     }
     
     public function enqueue_form_scripts( $form, $is_ajax ) {
-        // Solo encolar en las páginas de configuración del formulario
         if ( ! $this->is_form_settings_page() ) {
             return;
         }
@@ -137,11 +143,64 @@ class Gravity_Forms_Addon extends \GFAddOn {
             '1.4.0' 
         );
     }
-
+    
     private function is_form_settings_page() {
         return rgar( $_GET, 'page' ) === 'gf_edit_forms' && 
                rgar( $_GET, 'view' ) === 'settings' && 
                rgar( $_GET, 'subview' ) === $this->_slug;
+    }
+    
+    public function handle_test_message() {
+        check_ajax_referer( 'smsenlinea_gf_test_nonce', 'nonce' );
+        $form_id = intval( $_POST['form_id'] ?? 0 );
+        $test_phone = sanitize_text_field( $_POST['test_phone'] ?? '' );
+        $message_type = sanitize_key( $_POST['message_type'] ?? '' );
+        if ( empty( $form_id ) || empty( $test_phone ) || ! in_array( $message_type, [ 'customer', 'admin' ] ) ) {
+            wp_send_json_error( [ 'message' => 'Parámetros inválidos' ] );
+        }
+        $form = \GFAPI::get_form( $form_id );
+        $settings = $this->get_form_settings( $form );
+        $dummy_entry = $this->create_dummy_entry( $form );
+        $message_key = $message_type . '_message';
+        $channel_key = $message_type . '_channel';
+        $message = \GFCommon::replace_variables( 
+            $settings[ $message_key ] ?? 'Mensaje de prueba', 
+            $form, 
+            $dummy_entry, 
+            false, 
+            true, 
+            false, 
+            'text' 
+        );
+        $channel = $settings[ $channel_key ] ?? 'whatsapp';
+        $global_settings = get_option('wc_smsenlinea_settings', []);
+        $default_dial_code = $global_settings['default_country_code'] ?? '57';
+        $formatted_phone = $this->api_handler->format_phone_number( $test_phone, '', $default_dial_code );
+        if ( ! $formatted_phone ) {
+            wp_send_json_error( [ 'message' => 'Formato de número de teléfono inválido' ] );
+        }
+        $result = $this->api_handler->send_direct_message( $formatted_phone, $message, $channel );
+        if ( $result['success'] ) {
+            wp_send_json_success( [ 'message' => sprintf( 'Mensaje de prueba %s enviado exitosamente a %s vía %s', $message_type, $formatted_phone, strtoupper( $channel ) ) ] );
+        } else {
+            wp_send_json_error( [ 'message' => 'Error al enviar mensaje de prueba: ' . $result['error'] ] );
+        }
+    }
+
+    private function create_dummy_entry( $form ) {
+        $entry = [ 'id' => 'TEST', 'form_id' => $form['id'], 'date_created' => current_time( 'mysql' ), 'is_spam' => false, 'status' => 'active', ];
+        foreach ( $form['fields'] as $field ) {
+            switch ( $field->get_input_type() ) {
+                case 'text': case 'email': $entry[ $field->id ] = 'Texto de ejemplo'; break;
+                case 'phone': $entry[ $field->id ] = '+1234567890'; break;
+                case 'textarea': $entry[ $field->id ] = 'Contenido de ejemplo'; break;
+                case 'select': case 'radio': if ( ! empty( $field->choices ) ) { $entry[ $field->id ] = $field->choices[0]['value']; } break;
+                case 'checkbox': if ( ! empty( $field->choices ) ) { $entry[ $field->id . '.1' ] = $field->choices[0]['value']; } break;
+                case 'number': $entry[ $field->id ] = '123'; break;
+                default: $entry[ $field->id ] = 'Valor de ejemplo';
+            }
+        }
+        return $entry;
     }
     
     public function process_submission( $entry, $form ) {
